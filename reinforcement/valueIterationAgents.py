@@ -64,14 +64,15 @@ class ValueIterationAgent(ValueEstimationAgent):
         "*** YOUR CODE HERE ***"
         for i in range(self.iterations):
             counter = util.Counter()
-            for state in self.mdp.getStates():
-                max_val = -999999
-                for action in self.mdp.getPossibleActions(state):
-                    q_val = self.computeQValueFromValues(state, action)
-                    if q_val > max_val:
-                        max_val = q_val
-                    counter[state] = max_val
-
+            states = self.mdp.getStates()
+            for state in states:
+                m = float('-inf')
+                actions = self.mdp.getPossibleActions(state)
+                for action in actions:
+                    q = self.computeQValueFromValues(state, action)
+                    if q > m:
+                        m = q
+                    counter[state] = m
             self.values = counter
 
 
@@ -88,14 +89,12 @@ class ValueIterationAgent(ValueEstimationAgent):
           value function stored in self.values.
         """
         "*** YOUR CODE HERE ***"
-        q_value = 0
-        for ele in self.mdp.getTransitionStatesAndProbs(state, action):
-            next_s = ele[0]
-            prob = ele[1]
-            reward = self.mdp.getReward(state, action, next_s)
-            q_value += prob * (reward + self.discount * self.values[next_s])
+        q = 0
+        for n_state, t in self.mdp.getTransitionStatesAndProbs(state, action):
+            reward = self.mdp.getReward(state, action, n_state)
+            q += t * (reward + self.discount * self.values[n_state])
 
-        return q_value
+        return q
     
     def computeActionFromValues(self, state):
         """
@@ -155,13 +154,11 @@ class AsynchronousValueIterationAgent(ValueIterationAgent):
 
     def runValueIteration(self):
         "*** YOUR CODE HERE ***"
-        state_lst = self.mdp.getStates()
+        states = self.mdp.getStates()
         # update one state each iteration
         for i in range(self.iterations):
-            state = state_lst[i % len(state_lst)]
-            if self.mdp.isTerminal(state):
-                pass
-            else:
+            state = states[i % len(states)]
+            if self.mdp.isTerminal(state) == False:
                 action = self.computeActionFromValues(state)
                 self.values[state] = self.computeQValueFromValues(state, action)
 
@@ -184,43 +181,40 @@ class PrioritizedSweepingValueIterationAgent(AsynchronousValueIterationAgent):
 
     def runValueIteration(self):
         "*** YOUR CODE HERE ***"
-        pre_lst = {}
-        for s in self.mdp.getStates():
-            for action in self.mdp.getPossibleActions(s):
-                for succ, prob in self.mdp.getTransitionStatesAndProbs(s, action):
-                    if succ in pre_lst:
-                        pre_lst[succ].add(s)
+        p = {}
+        for state in self.mdp.getStates():
+            for action in self.mdp.getPossibleActions(state):
+                for n_state, t in self.mdp.getTransitionStatesAndProbs(state, action):
+                    if n_state in p:
+                        p[n_state].add(state)
                     else:
-                        pre_lst[succ] = {s}
+                        p[n_state] = {state}
 
         # Initialize an empty priority queue.
-        prique = util.PriorityQueue()
+        pq = util.PriorityQueue()
 
-        for s in self.mdp.getStates():
-            if self.mdp.isTerminal(s):
+        for state in self.mdp.getStates():
+            if self.mdp.isTerminal(state):
                 pass
             else:
-                action = self.computeActionFromValues(s)
-                maximum = self.computeQValueFromValues(s, action)
-                diff = abs(maximum - self.values[s])
-                prique.update(s, -diff)
+                action = self.computeActionFromValues(state)
+                m = self.computeQValueFromValues(state, action)
+                pq.update(state, -1 * abs(m - self.values[state]))
 
         for i in range(self.iterations):
-            if prique.isEmpty():
+            if pq.isEmpty():
                 return
 
-            cur_s = prique.pop()
-            if self.mdp.isTerminal(cur_s):
-                pass
-            else:
-                action = self.computeActionFromValues(cur_s)
-                self.values[cur_s] = self.computeQValueFromValues(cur_s, action)
+            state = pq.pop()
+            
+            if self.mdp.isTerminal(state) == False:
+                action = self.computeActionFromValues(state)
+                self.values[state] = self.computeQValueFromValues(state, action)
 
-            for pre in pre_lst[cur_s]:
-                if not self.mdp.isTerminal(pre):
+            for pre in p[state]:
+                if self.mdp.isTerminal(pre) == False:
                     action = self.computeActionFromValues(pre)
-                    maximum = self.computeQValueFromValues(pre, action)
-                    diff = abs(maximum - self.values[pre])
-                    if diff > self.theta:
-                        prique.update(pre, -diff)
+                    m = self.computeQValueFromValues(pre, action)
+                    if abs(m - self.values[pre]) > self.theta:
+                        pq.update(pre, -1 * abs(m - self.values[pre]))
 
