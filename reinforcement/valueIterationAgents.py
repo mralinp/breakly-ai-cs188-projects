@@ -62,6 +62,17 @@ class ValueIterationAgent(ValueEstimationAgent):
     def runValueIteration(self):
         # Write value iteration code here
         "*** YOUR CODE HERE ***"
+        for i in range(self.iterations):
+            counter = util.Counter()
+            for state in self.mdp.getStates():
+                max_val = -999999
+                for action in self.mdp.getPossibleActions(state):
+                    q_val = self.computeQValueFromValues(state, action)
+                    if q_val > max_val:
+                        max_val = q_val
+                    counter[state] = max_val
+
+            self.values = counter
 
 
     def getValue(self, state):
@@ -77,8 +88,15 @@ class ValueIterationAgent(ValueEstimationAgent):
           value function stored in self.values.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        q_value = 0
+        for ele in self.mdp.getTransitionStatesAndProbs(state, action):
+            next_s = ele[0]
+            prob = ele[1]
+            reward = self.mdp.getReward(state, action, next_s)
+            q_value += prob * (reward + self.discount * self.values[next_s])
 
+        return q_value
+    
     def computeActionFromValues(self, state):
         """
           The policy is the best action in the given state
@@ -89,7 +107,14 @@ class ValueIterationAgent(ValueEstimationAgent):
           terminal state, you should return None.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        act_dic = {}
+
+        for action in self.mdp.getPossibleActions(state):
+            tmp_q = self.computeQValueFromValues(state, action)
+            act_dic[action] = tmp_q
+        if not act_dic:
+            return None
+        return max(act_dic, key=lambda x: act_dic[x])
 
     def getPolicy(self, state):
         return self.computeActionFromValues(state)
@@ -130,6 +155,15 @@ class AsynchronousValueIterationAgent(ValueIterationAgent):
 
     def runValueIteration(self):
         "*** YOUR CODE HERE ***"
+        state_lst = self.mdp.getStates()
+        # update one state each iteration
+        for i in range(self.iterations):
+            state = state_lst[i % len(state_lst)]
+            if self.mdp.isTerminal(state):
+                pass
+            else:
+                action = self.computeActionFromValues(state)
+                self.values[state] = self.computeQValueFromValues(state, action)
 
 class PrioritizedSweepingValueIterationAgent(AsynchronousValueIterationAgent):
     """
@@ -150,4 +184,43 @@ class PrioritizedSweepingValueIterationAgent(AsynchronousValueIterationAgent):
 
     def runValueIteration(self):
         "*** YOUR CODE HERE ***"
+        pre_lst = {}
+        for s in self.mdp.getStates():
+            for action in self.mdp.getPossibleActions(s):
+                for succ, prob in self.mdp.getTransitionStatesAndProbs(s, action):
+                    if succ in pre_lst:
+                        pre_lst[succ].add(s)
+                    else:
+                        pre_lst[succ] = {s}
+
+        # Initialize an empty priority queue.
+        prique = util.PriorityQueue()
+
+        for s in self.mdp.getStates():
+            if self.mdp.isTerminal(s):
+                pass
+            else:
+                action = self.computeActionFromValues(s)
+                maximum = self.computeQValueFromValues(s, action)
+                diff = abs(maximum - self.values[s])
+                prique.update(s, -diff)
+
+        for i in range(self.iterations):
+            if prique.isEmpty():
+                return
+
+            cur_s = prique.pop()
+            if self.mdp.isTerminal(cur_s):
+                pass
+            else:
+                action = self.computeActionFromValues(cur_s)
+                self.values[cur_s] = self.computeQValueFromValues(cur_s, action)
+
+            for pre in pre_lst[cur_s]:
+                if not self.mdp.isTerminal(pre):
+                    action = self.computeActionFromValues(pre)
+                    maximum = self.computeQValueFromValues(pre, action)
+                    diff = abs(maximum - self.values[pre])
+                    if diff > self.theta:
+                        prique.update(pre, -diff)
 
